@@ -1,5 +1,5 @@
 ###########################################################################
-# 
+#
 # Python implementation of the ImageJ Cell Magic Wand plugin
 # (http://www.maxplanckflorida.org/fitzpatricklab/software/cellMagicWand/)
 # with modifications to reduce variability due to seed point selection
@@ -49,7 +49,7 @@ def image_cart_to_polar(image, center, min_radius, max_radius, phase_width, zoom
         center = (center[0]*zoom_factor + zoom_factor/2, center[1]*zoom_factor + zoom_factor/2)
         min_radius = min_radius * zoom_factor
         max_radius = max_radius * zoom_factor
-    
+
     # pad if necessary
     max_x, max_y = image.shape[0], image.shape[1]
     pad_dist_x = np.max([(center[0] + max_radius) - max_x, -(center[0] - max_radius)])
@@ -64,17 +64,17 @@ def image_cart_to_polar(image, center, min_radius, max_radius, phase_width, zoom
     x, y = coord_polar_to_cart(r, theta, center)
     x, y = np.round(x), np.round(y)
     x, y = x.astype(int), y.astype(int)
-    
+
     polar = image[x, y]
     polar.reshape((max_radius - min_radius, phase_width))
 
     return polar
 
 
-def mask_polar_to_cart(mask, center, min_radius, max_radius, output_shape, zoom_factor=1):
+def image_polar_to_cart(mask, center, min_radius, max_radius, output_shape, zoom_factor=1):
     '''Converts a polar binary mask to Cartesian and places in an image of zeros'''
 
-    # Account for upsampling 
+    # Account for upsampling
     if zoom_factor != 1:
         center = (center[0]*zoom_factor + zoom_factor/2, center[1]*zoom_factor + zoom_factor/2)
         min_radius = min_radius * zoom_factor
@@ -93,7 +93,7 @@ def mask_polar_to_cart(mask, center, min_radius, max_radius, output_shape, zoom_
 
     x = np.clip(x, 0, image.shape[0]-1)
     y = np.clip(y, 0, image.shape[1]-1)
-    ix,iy = np.meshgrid(np.arange(0,mask.shape[1]), np.arange(0,mask.shape[0]))    
+    ix,iy = np.meshgrid(np.arange(0,mask.shape[1]), np.arange(0,mask.shape[0]))
     image[x,y] = mask
 
     # downsample image
@@ -101,11 +101,8 @@ def mask_polar_to_cart(mask, center, min_radius, max_radius, output_shape, zoom_
         zf = 1/float(zoom_factor)
         image = zoom(image, (zf, zf), order=4)
 
-    # ensure image remains a filled binary mask
-    image = (image > 0.5).astype(int)
-    image = binary_fill_holes(image)
     return image
-    
+
 
 def find_edge_2d(polar, min_radius):
     '''Dynamic programming algorithm to find edge given polar image'''
@@ -126,7 +123,7 @@ def find_edge_2d(polar, min_radius):
     directions = np.argmax(values_move, axis=2)
     directions = np.subtract(directions, 1)
     directions = np.negative(directions)
-        
+
     # Edge following phase
     edge = []
     mask = np.zeros(polar.shape)
@@ -146,13 +143,13 @@ def find_edge_2d(polar, min_radius):
     # add to inside of mask accounting for min_radius
     new_mask = np.ones((min_radius+mask.shape[0], mask.shape[1]))
     new_mask[min_radius:, :] = mask
-    
+
     return np.array(edge), new_mask
 
 
 def edge_polar_to_cart(edge, center):
     '''Converts a list of polar edge points to a list of cartesian edge points'''
-    cart_edge = [] 
+    cart_edge = []
     for (r,t) in edge:
         x, y = coord_polar_to_cart(r, t, center)
         cart_edge.append((round(x), round(y)))
@@ -183,18 +180,23 @@ def cell_magic_wand_single_point(image, center, min_radius, max_radius,
                                       phase_width=phase_width, zoom_factor=zoom_factor)
     polar_edge, polar_mask = find_edge_2d(polar_image, min_radius)
     cart_edge = edge_polar_to_cart(polar_edge, center)
-    cart_mask = mask_polar_to_cart(polar_mask, center, min_radius, max_radius,
+    cart_image = image_polar_to_cart(polar_mask, center, min_radius, max_radius,
                                    image.shape, zoom_factor=zoom_factor)
+
+    # ensure image remains a filled binary mask
+    cart_mask = (cart_image > 0.5).astype(int)
+    cart_mask = binary_fill_holes(cart_mask)
+
     return cart_mask, cart_edge
 
 
 def cell_magic_wand(image, center, min_radius, max_radius,
                     roughness=2, zoom_factor=1, center_range=2):
-    '''Runs the cell magic wand tool on multiple points near the supplied center and 
+    '''Runs the cell magic wand tool on multiple points near the supplied center and
     combines the results for a more robust edge detection then provided by the vanilla wand tool.
 
     Returns a binary mask with 1s inside detected edge'''
-    
+
     centers = []
     for i in [-center_range, 0, center_range]:
         for j in [-center_range, 0, center_range]:
